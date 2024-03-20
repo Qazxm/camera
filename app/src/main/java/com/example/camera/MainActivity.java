@@ -16,6 +16,7 @@ import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.ImageView;
 
 import java.io.File;
@@ -40,9 +41,37 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // 카메라 버튼에 대한 클릭 리스너 설정
+        Button cameraButton = findViewById(R.id.btnCamera);
+        cameraButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                try {
+                    capturePhoto();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        // 갤러리 버튼에 대한 클릭 리스너 설정
+        Button galleryButton = findViewById(R.id.btnGallery);
+        galleryButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // 갤러리를 열도록 하는 코드를 여기에 추가
+                openGallery();
+            }
+
+            private void openGallery() {
+            }
+        });
     }
 
-    public void capturePhoto(View wiew) throws IOException {
+
+
+    public void capturePhoto( ) throws IOException {
         //카메라앱 호출을 위한 Intent생성
         Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
