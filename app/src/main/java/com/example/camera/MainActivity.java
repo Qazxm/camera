@@ -3,11 +3,13 @@ package com.example.camera;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
 
+import android.annotation.SuppressLint;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.media.ExifInterface;
 import android.net.Uri;
@@ -18,6 +20,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.RelativeLayout;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -25,12 +28,14 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 
 public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_IMAGE_CAPTURE = 0;
+    private static final int YOUR_GALLERY_REQUEST_CODE = 1;
     static File currentPhotoFile;
     static Uri currentPhotoUri;
     static String currentPhotoPath;
@@ -47,11 +52,7 @@ public class MainActivity extends AppCompatActivity {
         cameraButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                try {
-                    capturePhoto();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+                capturePhoto();
             }
         });
 
@@ -65,42 +66,75 @@ public class MainActivity extends AppCompatActivity {
             }
 
             private void openGallery() {
+                Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                startActivityForResult(intent, YOUR_GALLERY_REQUEST_CODE); // 갤러리에서 이미지를 선택하기 위해 startActivityForResult 사용
             }
+
         });
+
     }
 
 
 
-    public void capturePhoto( ) throws IOException {
-        //카메라앱 호출을 위한 Intent생성
-        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-            // 이미지파일생성
-            File imageFile = createImageFile();
-            if (imageFile != null) {
-                boolean currentPhotoUri = false;
-                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, currentPhotoUri);
-                startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
+    @SuppressLint("QueryPermissionsNeeded")
+    public void capturePhoto() {
+        try {
+            currentPhotoFile = createImageFile();
+            if (currentPhotoFile != null) { // 파일이 성공적으로 생성되었을 경우에만 카메라 호출
+                currentPhotoUri = FileProvider.getUriForFile(this,
+                        getApplicationContext().getPackageName() + ".fileprovider",
+                        currentPhotoFile);
+                Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
+                    takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, currentPhotoUri);
+                    startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
+                }
+            } else {
+                // 파일 생성 실패 처리
+                Log.e("capturePhoto", "Failed to create image file.");
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        Log.d( "onActivityResult","start");
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         ImageView imageView = findViewById(R.id.imageView);
 
-        if(requestCode == REQUEST_IMAGE_CAPTURE && resultCode == RESULT_OK){
-            if(currentPhotoUri != null) {
-                imageView.setImageURI(currentPhotoUri);
-
+        if (resultCode == RESULT_OK) {
+            if (requestCode == REQUEST_IMAGE_CAPTURE && currentPhotoUri != null) {
+                // 카메라로부터 촬영한 이미지를 처리하는 코드
                 Bitmap antiRotationBitmap = createAntiRotationSampledBitmap(currentPhotoUri, imageView.getWidth(), imageView.getHeight());
-                imageView.setImageBitmap(antiRotationBitmap);
-
-                galleryAddpic(currentPhotoUri, currentPhotoFileName);
+                if (antiRotationBitmap != null) {
+                    imageView.setImageBitmap(antiRotationBitmap);
+                    // 이미지뷰에 이미지가 설정된 후에 레이아웃 파라미터를 조정하여 중앙에 정렬
+                    RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) imageView.getLayoutParams();
+                    params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
+                    imageView.setLayoutParams(params);
+                    // 갤러리에 이미지 추가
+                    galleryAddpic(currentPhotoUri, currentPhotoFileName);
+                } else {
+                    Log.e("onActivityResult", "Failed to create anti-rotated bitmap.");
+                }
+            } else if (requestCode == YOUR_GALLERY_REQUEST_CODE && data != null) {
+                // 갤러리에서 선택한 이미지를 처리하는 코드
+                Uri selectedImageUri = data.getData();
+                if (selectedImageUri != null) {
+                    // 선택한 이미지를 이미지뷰에 표시
+                    imageView.setImageURI(selectedImageUri);
+                    // 이미지뷰에 이미지가 설정된 후에 레이아웃 파라미터를 조정하여 중앙에 정렬
+                    RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) imageView.getLayoutParams();
+                    params.addRule(RelativeLayout.CENTER_IN_PARENT, RelativeLayout.TRUE);
+                    imageView.setLayoutParams(params);
+                }
             }
         }
     }
+
+
+
 
     private void galleryAddpic(Uri currentPhotoUri, String currentPhotoFileName) {
     }
@@ -177,73 +211,78 @@ public class MainActivity extends AppCompatActivity {
 
     }
     private Bitmap createAntiRotationSampledBitmap(Uri srcImageFileUri, int dstWidth, int dstHeight) {
-
         ContentResolver contentResolver = getApplicationContext().getContentResolver();
-        ParcelFileDescriptor pfdExif = null;
         int orientation = 0;
         try {
-            pfdExif = contentResolver.openFileDescriptor(srcImageFileUri, "r");
-            FileDescriptor fdExif = pfdExif.getFileDescriptor();
-            ExifInterface exifInterface = null;
-            exifInterface = new ExifInterface(fdExif); //Android 7.0(API level 24) 이상에서 사용가능
-            orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED);
-            Log.d("orientation", String.valueOf(orientation));
-            pfdExif.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            InputStream inputStream = contentResolver.openInputStream(srcImageFileUri);
+            if (inputStream != null) {
+                ExifInterface exifInterface = new ExifInterface(inputStream);
+                orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED);
+                inputStream.close();
+            } else {
+                Log.e("createAntiRotationSampledBitmap", "Failed to open input stream for ExifInterface.");
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
-        /*-------------------------------------------*/
 
-        //축소된 이미지의 비트맵을 생성한다.
-        Bitmap bitmap = createSampledBitmap(srcImageFileUri, dstWidth, dstHeight);
+        // 이미지 회전 및 변환 작업 추가
+        Bitmap sampledBitmap = createSampledBitmap(srcImageFileUri, dstWidth, dstHeight);
 
+        // 이미지를 회전합니다.
         Matrix matrix = new Matrix();
-
         switch (orientation) {
-            case ExifInterface.ORIENTATION_NORMAL:
-                return bitmap;
-            case ExifInterface.ORIENTATION_FLIP_HORIZONTAL:
-                matrix.setScale(-1, 1); //좌우반전
+            case ExifInterface.ORIENTATION_ROTATE_90:
+                matrix.postRotate(90);
                 break;
             case ExifInterface.ORIENTATION_ROTATE_180:
-                matrix.setRotate(180);
-                break;
-            case ExifInterface.ORIENTATION_FLIP_VERTICAL:
-//              matrix.setRotate(180);
-//              matrix.postScale(-1, 1); //좌우반전
-                matrix.setScale(1, -1); //상하반전
-                break;
-            case ExifInterface.ORIENTATION_TRANSPOSE:
-                matrix.setRotate(90);
-                matrix.postScale(-1, 1); //좌우반전
-                break;
-            case ExifInterface.ORIENTATION_ROTATE_90:
-                matrix.setRotate(90);
-                break;
-            case ExifInterface.ORIENTATION_TRANSVERSE:
-                matrix.setRotate(-90);
-                matrix.postScale(-1, 1); //좌우반전
+                matrix.postRotate(180);
                 break;
             case ExifInterface.ORIENTATION_ROTATE_270:
-                matrix.setRotate(-90);
+                matrix.postRotate(270);
                 break;
             default:
-                return bitmap;
+                return sampledBitmap;
         }
+
         try {
-            Bitmap antiRotationBitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
-            bitmap.recycle(); //bitmap은 더이상 필요 없음으로 메모리에서 free시킨다.
-            return antiRotationBitmap;
+            Bitmap rotatedBitmap = Bitmap.createBitmap(sampledBitmap, 0, 0, sampledBitmap.getWidth(), sampledBitmap.getHeight(), matrix, true);
+            if (rotatedBitmap != sampledBitmap) {
+                sampledBitmap.recycle();
+            }
+            return rotatedBitmap;
         } catch (OutOfMemoryError e) {
             e.printStackTrace();
             return null;
         }
     }
 
+
     private Bitmap createSampledBitmap(Uri srcImageFileUri, int dstWidth, int dstHeight) {
-        return null;
+        try {
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inJustDecodeBounds = true;
+            BitmapFactory.decodeStream(getContentResolver().openInputStream(srcImageFileUri), null, options);
+
+            int srcWidth = options.outWidth;
+            int srcHeight = options.outHeight;
+
+            int inSampleSize = 1;
+            if (srcWidth > dstWidth || srcHeight > dstHeight) {
+                final int halfWidth = srcWidth / 2;
+                final int halfHeight = srcHeight / 2;
+                while ((halfWidth / inSampleSize) >= dstWidth && (halfHeight / inSampleSize) >= dstHeight) {
+                    inSampleSize *= 2;
+                }
+            }
+
+            options = new BitmapFactory.Options();
+            options.inSampleSize = inSampleSize;
+            return BitmapFactory.decodeStream(getContentResolver().openInputStream(srcImageFileUri), null, options);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 }
     
