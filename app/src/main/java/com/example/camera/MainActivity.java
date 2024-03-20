@@ -1,20 +1,22 @@
 package com.example.camera;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 
 import android.annotation.SuppressLint;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
-import android.media.ExifInterface;
+import androidx.exifinterface.media.ExifInterface;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
@@ -23,7 +25,6 @@ import android.widget.ImageView;
 import android.widget.RelativeLayout;
 
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -31,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Objects;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -79,8 +81,11 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("QueryPermissionsNeeded")
     public void capturePhoto() {
         try {
-            currentPhotoFile = createImageFile();
-            if (currentPhotoFile != null) { // 파일이 성공적으로 생성되었을 경우에만 카메라 호출
+            // 카메라 버튼을 찾습니다.
+            Button cameraButton = findViewById(R.id.btnCamera);
+            if (cameraButton != null) { // 버튼이 null이 아닌 경우에만 계속 진행합니다.
+                // 이미 파일을 생성한 후 currentPhotoFile과 currentPhotoUri를 설정합니다.
+                currentPhotoFile = createImageFile();
                 currentPhotoUri = FileProvider.getUriForFile(this,
                         getApplicationContext().getPackageName() + ".fileprovider",
                         currentPhotoFile);
@@ -90,13 +95,15 @@ public class MainActivity extends AppCompatActivity {
                     startActivityForResult(takePictureIntent, REQUEST_IMAGE_CAPTURE);
                 }
             } else {
-                // 파일 생성 실패 처리
-                Log.e("capturePhoto", "Failed to create image file.");
+                Log.e("capturePhoto", "Camera button is null.");
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
+
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -150,8 +157,11 @@ public class MainActivity extends AppCompatActivity {
 
         try {
             AssetFileDescriptor afdInput = contentResolver.openAssetFileDescriptor(srcImageFileUri, "r");
+            assert newImageFileUri != null;
             AssetFileDescriptor afdOutput = contentResolver.openAssetFileDescriptor(newImageFileUri, "w");
+            assert afdInput != null;
             FileInputStream fis = afdInput.createInputStream();
+            assert afdOutput != null;
             FileOutputStream fos = afdOutput.createOutputStream();
 
             byte[] readByteBuf = new byte[1024];
@@ -169,14 +179,13 @@ public class MainActivity extends AppCompatActivity {
 
             fis.close();
             afdInput.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         }
 
         contentValues.clear();
         contentValues.put(MediaStore.Images.Media.IS_PENDING, 0); //다른앱이 파일에 접근할수 있도록 함
+        assert newImageFileUri != null;
         contentResolver.update(newImageFileUri, contentValues, null, null);
         return newImageFileUri;
     }
@@ -184,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
 
     private File createImageFile() throws IOException {
         // Create an image file name
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        @SuppressLint("SimpleDateFormat") String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
         String imageFileName = "JPEG_" + timeStamp + "_";
 
         //외부저장소 사용
@@ -202,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
                     getApplicationContext().getPackageName() + ".fileprovider",
                     newFile);
         } catch (Exception ex) {
-            Log.d("FileProvider", ex.getMessage());
+            Log.d("FileProvider", Objects.requireNonNull(ex.getMessage()));
             ex.printStackTrace();
             throw ex;
         }
@@ -246,6 +255,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         try {
+            assert sampledBitmap != null;
             Bitmap rotatedBitmap = Bitmap.createBitmap(sampledBitmap, 0, 0, sampledBitmap.getWidth(), sampledBitmap.getHeight(), matrix, true);
             if (rotatedBitmap != sampledBitmap) {
                 sampledBitmap.recycle();
