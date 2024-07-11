@@ -226,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
             InputStream inputStream = contentResolver.openInputStream(srcImageFileUri);
             if (inputStream != null) {
                 ExifInterface exifInterface = new ExifInterface(inputStream);
-                orientation = exifInterface.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED);
+                orientation = exifInterface.toString(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_UNDEFINED);
                 inputStream.close();
             } else {
                 Log.e("createAntiRotationSampledBitmap", "Failed to open input stream for ExifInterface.");
